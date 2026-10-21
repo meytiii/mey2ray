@@ -91,7 +91,15 @@ sample_uuid = "4b616b6f-6f6c-4e65-7773-1a2b3c4d5e6f"
 sample_sni = "test-codespace-443.app.github.dev"
 
 generated_links = []
-for i, ip in enumerate(parsed_ips, 1):
+direct_remark = f"Mey2Ray-01%20%28{sample_sni}%29"
+direct_link = (
+    f"vless://{sample_uuid}@{sample_sni}:443?"
+    f"encryption=none&security=tls&type=ws&host={sample_sni}&sni={sample_sni}&path=%2F&alpn=http%2F1.1&fp=chrome"
+    f"#{direct_remark}"
+)
+generated_links.append(direct_link)
+
+for i, ip in enumerate(parsed_ips, 2):
     padded_index = f"{i:02d}"
     remark = f"Mey2Ray-{padded_index}%20%28{ip}%29"
     link = (
@@ -101,12 +109,17 @@ for i, ip in enumerate(parsed_ips, 1):
     )
     generated_links.append(link)
 
-check("Generated expected number of VLESS links", len(generated_links) == len(parsed_ips))
+check("Generated expected number of VLESS links", len(generated_links) == len(parsed_ips) + 1)
 
-sample_link = generated_links[0]
+direct_sample = generated_links[0]
+direct_parsed = urllib.parse.urlparse(direct_sample)
+check("Direct link URI scheme is vless", direct_parsed.scheme == "vless")
+check("Direct link netloc contains uuid and sni:443", f"{sample_uuid}@{sample_sni}:443" in direct_parsed.netloc)
+
+sample_link = generated_links[1]
 parsed_url = urllib.parse.urlparse(sample_link)
-check("URI scheme is vless", parsed_url.scheme == "vless")
-check("URI netloc contains uuid and ip:443", f"{sample_uuid}@{parsed_ips[0]}:443" in parsed_url.netloc)
+check("IP link URI scheme is vless", parsed_url.scheme == "vless")
+check("IP link netloc contains uuid and ip:443", f"{sample_uuid}@{parsed_ips[0]}:443" in parsed_url.netloc)
 query_params = urllib.parse.parse_qs(parsed_url.query)
 check("Query contains security=tls", query_params.get("security") == ["tls"])
 check("Query contains type=ws", query_params.get("type") == ["ws"])

@@ -214,7 +214,12 @@ fi
 
 RAW_LINKS=""
 LINKS_JSON="["
-COUNT=0
+COUNT=1
+
+DIRECT_REMARK="Mey2Ray-01%20%28${SNI}%29"
+DIRECT_LINK="vless://${UUID}@${SNI}:443?encryption=none&security=tls&type=ws&host=${SNI}&sni=${SNI}&path=%2F&alpn=http%2F1.1&fp=chrome#${DIRECT_REMARK}"
+RAW_LINKS="$DIRECT_LINK"
+LINKS_JSON="${LINKS_JSON}\"${DIRECT_LINK}\""
 
 OLD_IFS="$IFS"
 IFS='
@@ -226,14 +231,9 @@ for ip in $VALID_IPS; do
     
     LINK="vless://${UUID}@${ip}:443?encryption=none&security=tls&type=ws&host=${SNI}&sni=${SNI}&path=%2F&alpn=http%2F1.1&fp=chrome#${REMARK}"
     
-    if [ -z "$RAW_LINKS" ]; then
-        RAW_LINKS="$LINK"
-        LINKS_JSON="${LINKS_JSON}\"${LINK}\""
-    else
-        RAW_LINKS="$RAW_LINKS
+    RAW_LINKS="$RAW_LINKS
 $LINK"
-        LINKS_JSON="${LINKS_JSON},\"${LINK}\""
-    fi
+    LINKS_JSON="${LINKS_JSON},\"${LINK}\""
 done
 IFS="$OLD_IFS"
 LINKS_JSON="${LINKS_JSON}]"
