@@ -12,9 +12,10 @@
       "version": "latest"
     }
   },
+  "postStartCommand": "sudo nohup /usr/local/bin/entrypoint.sh >/var/log/mey2ray.log 2>&1 &",
   "postAttachCommand": {
     "public": "gh codespace ports visibility 443:public -c $CODESPACE_NAME 2>/dev/null || true",
-    "info": "/usr/local/bin/show-info.sh"
+    "info": "sleep 1; /usr/local/bin/show-info.sh"
   },
   "portsAttributes": {
     "443": {

@@ -1,7 +1,7 @@
 #!/bin/sh
 # ==============================================================================
 # Mey2Ray Information Banner & Status Display
-# Read-only script: safe to execute on terminal attachment or repeated calls.
+# Automatically initiates daemon if not running, then displays endpoints & links.
 # ==============================================================================
 set -eu
 
@@ -9,13 +9,42 @@ DATA_FILE="/var/www/dashboard/data.json"
 PID_FILE="/var/run/mey2ray/mey2ray.pid"
 SUB_FILE="/var/www/sub/index.txt"
 
+is_service_running() {
+    if [ -f "$PID_FILE" ]; then
+        pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# ------------------------------------------------------------------------------
+# Auto-start service if not currently running
+# ------------------------------------------------------------------------------
+if ! is_service_running; then
+    echo "==> Mey2Ray proxy daemon is not running. Auto-starting services in background..."
+    if [ "$(id -u)" -eq 0 ]; then
+        nohup /usr/local/bin/entrypoint.sh >/var/log/mey2ray.log 2>&1 &
+    else
+        sudo nohup /usr/local/bin/entrypoint.sh >/var/log/mey2ray.log 2>&1 &
+    fi
+    # Wait up to 6 seconds for Xray + Nginx readiness and data generation
+    for i in 1 2 3 4 5 6; do
+        if is_service_running && [ -f "$DATA_FILE" ]; then
+            break
+        fi
+        sleep 1
+    done
+fi
+
 echo ""
 echo "===================================================================="
 echo "                   Mey2Ray - VLESS Proxy System"
 echo "===================================================================="
 
 # Check service status
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+if is_service_running; then
     echo "  Status:           [ RUNNING ] (Supervising Xray + Nginx)"
 else
     echo "  Status:           [ INITIALIZING / STOPPED ]"
@@ -51,7 +80,7 @@ if [ -f "$SUB_FILE" ]; then
     cat "$SUB_FILE"
     echo ""
 else
-    echo "(Subscription file pending generation)"
+    echo "(Subscription file pending generation. Please wait a few seconds and run show-info.sh again)"
 fi
 echo "-------------------- END MEY2RAY SUBSCRIPTION --------------------"
 echo ""

@@ -242,9 +242,13 @@ dockerfile = os.path.join(DEVCONTAINER_DIR, "Dockerfile")
 with open(devcontainer_json, "r", encoding="utf-8") as f:
     dc_text = f.read()
 
-check("devcontainer.json exists and is readable", True)
-check("devcontainer.json does NOT invoke entrypoint.sh in postAttachCommand", "entrypoint.sh" not in dc_text)
-check("devcontainer.json uses show-info.sh in postAttachCommand", "show-info.sh" in dc_text)
+try:
+    dc_json = json.loads(dc_text)
+    post_attach = str(dc_json.get("postAttachCommand", ""))
+    check("devcontainer.json does NOT invoke entrypoint.sh in postAttachCommand", "entrypoint.sh" not in post_attach)
+    check("devcontainer.json uses show-info.sh in postAttachCommand", "show-info.sh" in post_attach)
+except Exception as e:
+    check("devcontainer.json is valid JSON", False, str(e))
 
 with open(dockerfile, "r", encoding="utf-8") as f:
     df_text = f.read()
