@@ -204,6 +204,7 @@ shell_scripts = [
     os.path.join(DEVCONTAINER_DIR, "install.sh"),
     os.path.join(DEVCONTAINER_DIR, "show-info.sh"),
     os.path.join(DEVCONTAINER_DIR, "healthcheck.sh"),
+    os.path.join(DEVCONTAINER_DIR, "keepalive.sh"),
 ]
 
 git_bash = r"C:\Program Files\Git\bin\bash.exe"

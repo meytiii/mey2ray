@@ -322,6 +322,7 @@ fi
 
 echo "==> Mey2Ray daemon active. Supervising services..."
 
+KEEPALIVE_TICK=0
 while true; do
     if ! kill -0 "$XRAY_PID" 2>/dev/null; then
         echo "ERROR: Xray process (PID $XRAY_PID) terminated." >&2
@@ -331,5 +332,16 @@ while true; do
         echo "ERROR: Nginx process (PID $NGINX_PID) terminated." >&2
         cleanup
     fi
+
+    KEEPALIVE_TICK=$((KEEPALIVE_TICK + 5))
+    if [ "$KEEPALIVE_TICK" -ge 60 ]; then
+        KEEPALIVE_TICK=0
+        if [ "$SNI" != "localhost" ]; then
+            curl -fsSL --connect-timeout 4 --max-time 8 "https://${SNI}/healthz" >/dev/null 2>&1 || true
+        fi
+        curl -fsSL --connect-timeout 2 --max-time 4 "http://127.0.0.1:443/healthz" >/dev/null 2>&1 || true
+        date +%s > "${STATE_DIR}/heartbeat" 2>/dev/null || true
+    fi
+
     sleep 5
 done
