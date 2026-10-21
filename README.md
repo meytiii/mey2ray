@@ -1,5 +1,7 @@
 # Mey2Ray — Resilient VLESS Proxy Infrastructure
 
+[English](README.md) | [فارسی](README.fa.md)
+
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/meytiii/mey2ray?quickstart=1)
 
 A hardened, lightweight VLESS proxy engine built on [Xray-core](https://github.com/XTLS/Xray-core) and an Nginx reverse proxy. Configured to run inside **GitHub Codespaces** or any Docker/VPS host with zero local software requirements.
@@ -10,11 +12,13 @@ Featuring persistent UUID management, a clean IP configuration system, a live au
 
 ## Key Features
 
+- **Direct Codespace Domain Profile:** Primary profile (`Mey2Ray-01`) routing through your unique Codespace edge domain alongside 23 validated external IP endpoints (24 total endpoints).
 - **Integrated Nginx Reverse Proxy:** Efficiently routes incoming traffic — WebSocket connections proxy to Xray-core on `127.0.0.1:8443`, web requests serve the dashboard, and `/sub` delivers Base64 subscription payloads.
 - **Persistent UUID Identity:** Your client credentials survive Codespaces stops, restarts, and terminal sessions. Optionally override with an explicit `VLESS_UUID` environment variable.
 - **Live Auto-Updating Subscription (`/sub`):** Import a single URL into your proxy client; updates automatically sync all active server endpoints with zero manual link copying.
 - **Offline Base64 Subscription:** Copy a single Base64 block to instantly import all profiles without relying on a live HTTP connection to Codespaces.
 - **Minimalist Web Dashboard:** Dark-themed web interface (`#0B101E`) with one-click copy buttons and a 100% offline, client-side QR code generator (zero third-party API tracking).
+- **Persistent Keepalive System:** Multi-vector background edge pulse keeping your Codespace alive for the full session allocation.
 - **Externalized IP Management (`ips.txt`):** Easily add, test, or organize server endpoints in a clean configuration file with automatic duplicate filtering and IPv4 validation.
 - **Deterministic Lifecycle:** Eliminates duplicate process spawning and config corruption upon terminal re-attachment. Includes an accurate multi-service healthcheck.
 
@@ -46,7 +50,13 @@ Featuring persistent UUID management, a clean IP configuration system, a live au
 
 ## Quickstart Guide
 
-### 1. One-Click Launch
+### 1. Recommended Settings (Before Launch)
+For minimal latency and uninterrupted service, configure these settings in your GitHub account:
+1. Open **[GitHub Codespaces Settings](https://github.com/settings/codespaces)**.
+2. Set **Region** to **`Europe West`** (best ping and lowest packet loss).
+3. Set **Default idle timeout** to the maximum **`240`** minutes.
+
+### 2. One-Click Launch
 Click the button below to fork and launch a dedicated Codespace instance:
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/meytiii/mey2ray?quickstart=1)
@@ -56,7 +66,7 @@ Click the button below to fork and launch a dedicated Codespace instance:
 2. In your fork, click **Code** > **Codespaces** > **Create codespace on main**.
 3. Wait 1–2 minutes while GitHub builds the container environment.
 
-### 2. Retrieve Your Proxy Credentials
+### 3. Retrieve Your Proxy Credentials
 Once initialization completes, the integrated terminal displays your service URLs and subscription payload:
 
 ```text
@@ -66,11 +76,11 @@ Once initialization completes, the integrated terminal displays your service URL
   Status:           [ RUNNING ] (Supervising Xray + Nginx)
   Dashboard URL:    https://<codespace-name>-443.app.github.dev/
   Subscription URL: https://<codespace-name>-443.app.github.dev/sub
-  Active Endpoints: 23 validated servers
+  Active Endpoints: 24 validated servers
 ====================================================================
 ```
 
-### 3. Connect With Your Preferred Client
+### 4. Connect With Your Preferred Client
 
 #### Method A: Live Subscription URL (Recommended)
 1. Copy the **Subscription URL** (`https://<codespace-name>-443.app.github.dev/sub`).
@@ -78,7 +88,7 @@ Once initialization completes, the integrated terminal displays your service URL
    - Add a new **Subscription Group**.
    - Paste the Subscription URL and save.
    - Click **Update Subscription**.
-3. All configured endpoints will populate automatically.
+3. All 24 configured endpoints will populate automatically.
 
 #### Method B: Web Dashboard & QR Code
 1. Open the **Dashboard URL** in your web browser.
