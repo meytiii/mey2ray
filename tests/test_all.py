@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-Mey2Ray Comprehensive Verification Test Suite
-Tests configuration files, shell scripts, IP parsing, UUID management,
-subscription generation, Xray JSON templates, Nginx configurations, and Dashboard assets.
-"""
-
 import os
 import re
 import sys
@@ -35,9 +29,6 @@ print("=" * 70)
 print("             Mey2Ray Automated Verification Suite")
 print("=" * 70)
 
-# ------------------------------------------------------------------------------
-# Test Suite 1: IP List Parsing and Deduplication
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 1: IP List Configuration (.devcontainer/ips.txt)] ---")
 ips_file = os.path.join(DEVCONTAINER_DIR, "ips.txt")
 check("ips.txt exists", os.path.isfile(ips_file))
@@ -71,9 +62,6 @@ check("No invalid IP strings in ips.txt", len(invalid_ips) == 0, f"Found invalid
 check("IP count is positive and expected", len(parsed_ips) >= 20, f"Parsed {len(parsed_ips)} unique IPs")
 check("Reported duplicate 144.76.1.88 resolved", parsed_ips.count("144.76.1.88") == 1)
 
-# ------------------------------------------------------------------------------
-# Test Suite 2: UUID Validation and Persistence Logic
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 2: UUID Validation and Persistence Logic] ---")
 uuid_regex = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
@@ -83,7 +71,6 @@ test_invalid_uuid = "invalid-uuid-12345"
 check("Regex matches valid UUIDv4", bool(uuid_regex.match(test_valid_uuid)))
 check("Regex rejects invalid UUID string", not bool(uuid_regex.match(test_invalid_uuid)))
 
-# Test atomic file write simulation
 temp_state_dir = os.path.join(REPO_ROOT, ".devcontainer", ".state_test")
 os.makedirs(temp_state_dir, exist_ok=True)
 uuid_test_file = os.path.join(temp_state_dir, "uuid")
@@ -99,9 +86,6 @@ finally:
     if os.path.exists(temp_state_dir):
         os.rmdir(temp_state_dir)
 
-# ------------------------------------------------------------------------------
-# Test Suite 3: Subscription & VLESS URI Syntax & Encoding Equivalence
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 3: Subscription & VLESS URI Consistency] ---")
 sample_uuid = "4b616b6f-6f6c-4e65-7773-1a2b3c4d5e6f"
 sample_sni = "test-codespace-443.app.github.dev"
@@ -119,7 +103,6 @@ for i, ip in enumerate(parsed_ips, 1):
 
 check("Generated expected number of VLESS links", len(generated_links) == len(parsed_ips))
 
-# Check link format
 sample_link = generated_links[0]
 parsed_url = urllib.parse.urlparse(sample_link)
 check("URI scheme is vless", parsed_url.scheme == "vless")
@@ -132,16 +115,12 @@ check("Query contains fp=chrome", query_params.get("fp") == ["chrome"])
 check("Query contains host matching SNI", query_params.get("host") == [sample_sni])
 check("Query contains path=/", query_params.get("path") == ["/"])
 
-# Base64 offline vs live equivalence
 raw_joined = "\n".join(generated_links) + "\n"
 encoded_b64 = base64.b64encode(raw_joined.encode("utf-8")).decode("utf-8")
 decoded_raw = base64.b64decode(encoded_b64).decode("utf-8")
 check("Base64 encode/decode equivalence", raw_joined == decoded_raw)
 check("Decoded profiles match original count", len(decoded_raw.strip().split("\n")) == len(generated_links))
 
-# ------------------------------------------------------------------------------
-# Test Suite 4: Xray & Nginx Configuration Validation
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 4: Xray & Nginx Configurations] ---")
 xray_template = os.path.join(DEVCONTAINER_DIR, "config.json")
 check("Xray config.json template exists", os.path.isfile(xray_template))
@@ -149,7 +128,6 @@ check("Xray config.json template exists", os.path.isfile(xray_template))
 with open(xray_template, "r", encoding="utf-8") as f:
     xray_content = f.read()
 
-# Replace ${UUID} for JSON parsing check
 xray_json_str = xray_content.replace("${UUID}", sample_uuid)
 try:
     xray_data = json.loads(xray_json_str)
@@ -160,7 +138,6 @@ try:
     check("Xray inbound protocol is vless", inbound.get("protocol") == "vless")
     check("Xray transport network is ws on path /", inbound.get("streamSettings", {}).get("wsSettings", {}).get("path") == "/")
     
-    # Check BitTorrent blocking rule
     rules = xray_data.get("routing", {}).get("rules", [])
     bt_blocked = any(r.get("outboundTag") == "block" and "bittorrent" in r.get("protocol", []) for r in rules)
     check("BitTorrent blackhole blocking rule preserved", bt_blocked)
@@ -178,9 +155,6 @@ check("Nginx defines /sub endpoint with Profile-Title", "location = /sub" in ngi
 check("Nginx proxies WebSocket upgrade to 127.0.0.1:8443", "proxy_pass http://127.0.0.1:8443;" in nginx_content)
 check("Nginx sets long WebSocket timeout", "proxy_read_timeout 86400s;" in nginx_content)
 
-# ------------------------------------------------------------------------------
-# Test Suite 5: Dashboard Assets and Offline Integrity
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 5: Dashboard Assets & Security] ---")
 dash_html = os.path.join(DASHBOARD_DIR, "index.html")
 dash_css = os.path.join(DASHBOARD_DIR, "style.css")
@@ -202,7 +176,6 @@ check("Dashboard includes Copy Offline Base64 button", 'id="copyOfflineBtn"' in 
 check("Dashboard includes QR code container", 'id="qrCodeContainer"' in html_text)
 check("Dashboard includes health status indicator", 'id="healthPill"' in html_text)
 
-# Check for absence of dangerous external CDN calls
 external_cdn_pattern = re.compile(r'https?://(cdn|ajax|cdnjs|code\.jquery|fonts\.googleapis)', re.IGNORECASE)
 check("Dashboard HTML zero external CDNs", not bool(external_cdn_pattern.search(html_text)))
 
@@ -212,9 +185,6 @@ check("Dashboard CSS uses #0B101E background", "#0B101E" in css_text or "#0b101e
 check("Dashboard CSS uses #151E32 surface", "#151E32" in css_text or "#151e32" in css_text)
 check("Dashboard CSS uses #2159E8 accent", "#2159E8" in css_text or "#2159e8" in css_text)
 
-# ------------------------------------------------------------------------------
-# Test Suite 6: Shell Scripts Syntax Check (via bash / sh if available)
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 6: Shell Scripts Syntax Verification] ---")
 shell_scripts = [
     os.path.join(DEVCONTAINER_DIR, "entrypoint.sh"),
@@ -232,9 +202,6 @@ for script in shell_scripts:
         result = subprocess.run([git_bash, "-n", script], capture_output=True, text=True)
         check(f"Syntax validation (bash -n): {os.path.basename(script)}", result.returncode == 0, result.stderr.strip())
 
-# ------------------------------------------------------------------------------
-# Test Suite 7: Devcontainer & Dockerfile Lifecycle Consistency
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 7: Devcontainer & Dockerfile Lifecycle] ---")
 devcontainer_json = os.path.join(DEVCONTAINER_DIR, "devcontainer.json")
 dockerfile = os.path.join(DEVCONTAINER_DIR, "Dockerfile")
@@ -258,9 +225,6 @@ check("Dockerfile copies healthcheck.sh", "healthcheck.sh" in df_text)
 check("Dockerfile uses healthcheck.sh in HEALTHCHECK instruction", "CMD /usr/local/bin/healthcheck.sh" in df_text)
 check("Dockerfile has single CMD entrypoint.sh", 'CMD ["/usr/local/bin/entrypoint.sh"]' in df_text)
 
-# ------------------------------------------------------------------------------
-# Test Suite 8: .gitignore Security Verification
-# ------------------------------------------------------------------------------
 print("\n--- [Suite 8: Git Security & Persistence Isolation] ---")
 gitignore_file = os.path.join(REPO_ROOT, ".gitignore")
 check(".gitignore exists", os.path.isfile(gitignore_file))

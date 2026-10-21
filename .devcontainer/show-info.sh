@@ -1,13 +1,8 @@
 #!/bin/sh
-# ==============================================================================
-# Mey2Ray Information Banner & Status Display
-# Automatically initiates daemon if not running, then displays endpoints & links.
-# ==============================================================================
 set -eu
 
 DATA_FILE="/var/www/dashboard/data.json"
 PID_FILE="/var/run/mey2ray/mey2ray.pid"
-SUB_FILE="/var/www/sub/index.txt"
 
 is_service_running() {
     if [ -f "$PID_FILE" ]; then
@@ -19,9 +14,6 @@ is_service_running() {
     return 1
 }
 
-# ------------------------------------------------------------------------------
-# Auto-start service if not currently running
-# ------------------------------------------------------------------------------
 if ! is_service_running; then
     echo "==> Mey2Ray proxy daemon is not running. Auto-starting services in background..."
     if [ "$(id -u)" -eq 0 ]; then
@@ -29,7 +21,6 @@ if ! is_service_running; then
     else
         sudo nohup /usr/local/bin/entrypoint.sh >/var/log/mey2ray.log 2>&1 &
     fi
-    # Wait up to 6 seconds for Xray + Nginx readiness and data generation
     for i in 1 2 3 4 5 6; do
         if is_service_running && [ -f "$DATA_FILE" ]; then
             break
@@ -43,7 +34,6 @@ echo "===================================================================="
 echo "                   Mey2Ray - VLESS Proxy System"
 echo "===================================================================="
 
-# Check service status
 if is_service_running; then
     echo "  Status:           [ RUNNING ] (Supervising Xray + Nginx)"
 else
@@ -64,28 +54,5 @@ else
     echo "  Subscription URL: https://${SNI}/sub"
 fi
 
-echo "===================================================================="
-echo ""
-echo "  [1] Live Subscription (Recommended for auto-updating):"
-echo "      Import the Subscription URL into your client (v2rayN, NekoBox,"
-echo "      Streisand, Shadowrocket) and update subscription."
-echo ""
-echo "  [2] Web Dashboard (Local QR code & direct controls):"
-echo "      Open the Dashboard URL in your browser to scan the QR code"
-echo "      or copy links directly."
-echo ""
-echo "  [3] Offline Base64 Subscription Payload (One-click import):"
-echo "------------------- BEGIN MEY2RAY SUBSCRIPTION -------------------"
-if [ -f "$SUB_FILE" ]; then
-    cat "$SUB_FILE"
-    echo ""
-else
-    echo "(Subscription file pending generation. Please wait a few seconds and run show-info.sh again)"
-fi
-echo "-------------------- END MEY2RAY SUBSCRIPTION --------------------"
-echo ""
-echo "Important Notes:"
-echo " - Ensure Codespaces port 443 visibility is set to 'Public'."
-echo " - Free tier includes 60 hours runtime/month on 2-core machines."
 echo "===================================================================="
 echo ""

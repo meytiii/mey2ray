@@ -1,8 +1,4 @@
 #!/bin/sh
-# ==============================================================================
-# Mey2Ray Xray-core Installer
-# Handles multi-arch detection, API rate limits, retries, and integrity checks.
-# ==============================================================================
 set -eu
 
 XRAY_DIR="/usr/local/bin"
@@ -29,13 +25,11 @@ detect_arch() {
 }
 
 fetch_latest_version() {
-    # If explicitly set by user/env, honor it
     if [ -n "${XRAY_VERSION:-}" ]; then
         echo "$XRAY_VERSION"
         return 0
     fi
 
-    # Try GitHub Releases API with bounded retries
     attempt=1
     version=""
     while [ "$attempt" -le "$MAX_RETRIES" ]; do
@@ -52,8 +46,7 @@ fetch_latest_version() {
         sleep 2
     done
 
-    # Fallback to verified stable release if API is rate-limited or unavailable
-    echo "WARNING: Failed to query GitHub API (likely rate limited). Using fallback version: $FALLBACK_VERSION" >&2
+    echo "WARNING: Failed to query GitHub API. Using fallback version: $FALLBACK_VERSION" >&2
     echo "$FALLBACK_VERSION"
 }
 
@@ -73,7 +66,6 @@ trap cleanup EXIT INT TERM
 
 ZIP_FILE="$TMP_DIR/xray.zip"
 
-# Download with retries
 echo "==> Downloading Xray release package..."
 download_success=0
 for i in $(seq 1 "$MAX_RETRIES"); do
@@ -109,7 +101,7 @@ mv "$TMP_DIR/xray" "$XRAY_DIR/xray"
 
 echo "==> Verifying installed binary..."
 if ! "$XRAY_DIR/xray" version >/dev/null 2>&1; then
-    echo "WARNING: Xray binary installed but 'xray version' returned non-zero (may need emulation or specific libc)." >&2
+    echo "WARNING: Xray binary installed but 'xray version' returned non-zero." >&2
 else
     echo "==> Verification successful: $("$XRAY_DIR/xray" version | head -n 1)"
 fi

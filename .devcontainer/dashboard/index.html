@@ -9,7 +9,6 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <header class="header">
             <div class="brand">
                 <span class="brand-badge">Xray</span>
@@ -24,7 +23,6 @@
             </div>
         </header>
 
-        <!-- Subscription & QR Code Panel -->
         <main>
             <section class="card" aria-labelledby="sub-section-title">
                 <div class="card-title" id="sub-section-title">
@@ -66,15 +64,12 @@
                     </div>
 
                     <div class="qr-wrapper">
-                        <div id="qrCodeContainer" class="qr-box" aria-label="QR Code for Subscription URL">
-                            <!-- QR Code generated locally via JS -->
-                        </div>
+                        <div id="qrCodeContainer" class="qr-box" aria-label="QR Code for Subscription URL"></div>
                         <span class="qr-caption">Scan with mobile client camera</span>
                     </div>
                 </div>
             </section>
 
-            <!-- Instructions Section -->
             <section class="card" style="margin-top: 1.5rem;" aria-labelledby="guide-section-title">
                 <h2 class="card-title" id="guide-section-title">Import & Usage Instructions</h2>
                 <ol class="step-list">
@@ -99,7 +94,6 @@
                 </ol>
             </section>
 
-            <!-- Offline Subscription Block -->
             <section class="card" style="margin-top: 1.5rem;" aria-labelledby="offline-section-title">
                 <div class="card-title" id="offline-section-title">
                     <span>Offline Base64 Subscription Payload</span>
@@ -114,16 +108,13 @@
             </section>
         </main>
 
-        <!-- Footer -->
         <footer class="footer">
             <p>Mey2Ray &bull; Educational & Research Proxy Infrastructure &bull; Local health indicates service status, not WAN bypass reachability.</p>
         </footer>
     </div>
 
-    <!-- Toast Notification -->
     <div id="toast" class="toast" role="status" aria-live="polite">Copied to clipboard</div>
 
-    <!-- Scripts (100% offline & local) -->
     <script src="qrcode.min.js"></script>
     <script src="app.js"></script>
 </body>

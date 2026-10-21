@@ -1,8 +1,3 @@
-/**
- * Mey2Ray Web Dashboard Logic
- * Zero external calls, secure DOM handling, offline QR rendering.
- */
-
 (function () {
     'use strict';
 
@@ -71,12 +66,10 @@
         var healthPill = document.getElementById('healthPill');
         var qrContainer = document.getElementById('qrCodeContainer');
 
-        // Determine subscription URL based on current host if not defined
         var detectedSubUrl = window.location.origin + '/sub';
         var allLinksText = '';
         var offlineBase64Text = '';
 
-        // Fetch dynamic configuration generated during container startup
         fetch('/data.json')
             .then(function (res) {
                 if (!res.ok) throw new Error('Data file not available');
@@ -102,11 +95,9 @@
                     }
                 }
 
-                // Render local offline QR code
                 renderQr(detectedSubUrl);
             })
             .catch(function () {
-                // Fallback to current browser URL
                 subUrlInput.value = detectedSubUrl;
                 renderQr(detectedSubUrl);
             });
@@ -126,7 +117,6 @@
             }
         }
 
-        // Attach event listeners
         if (copySubBtn) {
             copySubBtn.addEventListener('click', function () {
                 copyToClipboard(subUrlInput.value, 'Subscription URL copied!');
@@ -145,7 +135,6 @@
                 if (allLinksText) {
                     copyToClipboard(allLinksText, 'All VLESS links copied!');
                 } else {
-                    // Fallback to fetching live /sub and decoding
                     fetch('/sub')
                         .then(function (r) { return r.text(); })
                         .then(function (b64) {
@@ -173,7 +162,6 @@
             });
         }
 
-        // Check local listener health (non-invasive /healthz check)
         fetch('/healthz')
             .then(function (res) {
                 if (res.ok && healthPill) {

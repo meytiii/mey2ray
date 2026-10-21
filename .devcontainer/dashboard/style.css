@@ -1,8 +1,3 @@
-/* ==============================================================================
-   Mey2Ray Minimalist Web Dashboard Styles
-   Palette: Background #0B101E | Panels #151E32 | Primary Accent #2159E8
-   ============================================================================== */
-
 :root {
     --bg-base: #0B101E;
     --bg-surface: #151E32;
@@ -47,7 +42,6 @@ body {
     gap: 1.5rem;
 }
 
-/* Header & Brand */
 .header {
     display: flex;
     justify-content: space-between;
@@ -87,7 +81,6 @@ body {
     margin-top: 0.2rem;
 }
 
-/* Status Indicator */
 .status-pill {
     display: inline-flex;
     align-items: center;
@@ -108,7 +101,6 @@ body {
     background-color: currentColor;
 }
 
-/* Panels & Cards */
 .card {
     background-color: var(--bg-surface);
     border: 1px solid var(--border-color);
@@ -131,7 +123,6 @@ body {
     margin-bottom: 1rem;
 }
 
-/* Grid layout for QR & Subscription info */
 .grid-two-col {
     display: grid;
     grid-template-columns: 1fr 240px;
@@ -145,7 +136,6 @@ body {
     }
 }
 
-/* Subscription URL Box */
 .sub-url-box {
     display: flex;
     gap: 0.5rem;
@@ -172,7 +162,6 @@ body {
     box-shadow: 0 0 0 3px var(--accent-focus);
 }
 
-/* Buttons */
 .btn {
     display: inline-flex;
     align-items: center;
@@ -220,7 +209,6 @@ body {
     gap: 0.75rem;
 }
 
-/* QR Code Container */
 .qr-wrapper {
     display: flex;
     flex-direction: column;
@@ -249,7 +237,6 @@ body {
     color: var(--text-muted);
 }
 
-/* Instructions & Steps */
 .step-list {
     display: flex;
     flex-direction: column;
@@ -283,7 +270,6 @@ body {
     color: var(--text-primary);
 }
 
-/* Notice / Callout */
 .notice {
     background-color: var(--status-warn-bg);
     border: 1px solid rgba(245, 158, 11, 0.3);
@@ -296,7 +282,6 @@ body {
     align-items: flex-start;
 }
 
-/* Pre / Code Area */
 .code-block {
     background-color: var(--bg-base);
     border: 1px solid var(--border-color);
@@ -311,7 +296,6 @@ body {
     word-break: break-all;
 }
 
-/* Toast Notification */
 .toast {
     position: fixed;
     bottom: 24px;
@@ -335,7 +319,6 @@ body {
     transform: translateY(0);
 }
 
-/* Footer */
 .footer {
     text-align: center;
     font-size: 0.75rem;

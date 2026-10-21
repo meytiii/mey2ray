@@ -1,8 +1,4 @@
 #!/bin/sh
-# ==============================================================================
-# Mey2Ray Authoritative Container Entrypoint
-# Manages lifecycle, persistent UUID, IP validation, Xray, and Nginx reverse proxy
-# ==============================================================================
 set -eu
 
 PID_DIR="/var/run/mey2ray"
@@ -15,9 +11,6 @@ DASHBOARD_DIR="/var/www/dashboard"
 
 mkdir -p "$PID_DIR" "$SUB_DIR" "$DASHBOARD_DIR" /etc/mey2ray /var/log/nginx
 
-# ------------------------------------------------------------------------------
-# 1. Single Authoritative Execution & Lock Check
-# ------------------------------------------------------------------------------
 if [ -f "$PID_FILE" ]; then
     OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
     if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
@@ -31,7 +24,6 @@ fi
 
 echo "$$" > "$PID_FILE"
 
-# Process tracking variables
 XRAY_PID=""
 NGINX_PID=""
 
@@ -51,12 +43,8 @@ cleanup() {
 
 trap cleanup INT TERM HUP QUIT
 
-# ------------------------------------------------------------------------------
-# 2. Persistent UUID Management
-# ------------------------------------------------------------------------------
 validate_uuid() {
     val="$1"
-    # RFC 4122 UUID pattern
     case "$val" in
         [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])
             return 0
@@ -71,13 +59,11 @@ generate_random_uuid() {
     if command -v uuidgen >/dev/null 2>&1; then
         uuidgen | tr '[:upper:]' '[:lower:]'
     else
-        # Fallback to cryptographically seeded random bytes
         hex="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
         p1=$(echo "$hex" | cut -c 1-8)
         p2=$(echo "$hex" | cut -c 9-12)
         p3="4$(echo "$hex" | cut -c 14-16)"
         c=$(echo "$hex" | cut -c 17)
-        # Variant bits 8, 9, a, or b
         case "$c" in
             [0-3]) v="8" ;;
             [4-7]) v="9" ;;
@@ -90,8 +76,6 @@ generate_random_uuid() {
     fi
 }
 
-# Resolve persistent storage directory across Codespaces container restarts/rebuilds
-# The workspace folder in Codespaces (/workspaces/<repo>) is a persistent Docker mount.
 STATE_DIR=""
 for candidate in /workspaces/* "$PWD" /app; do
     if [ -d "$candidate" ] && [ -w "$candidate" ]; then
@@ -108,7 +92,6 @@ fi
 mkdir -p "$STATE_DIR"
 UUID_STORAGE_FILE="${STATE_DIR}/uuid"
 
-# Determine authoritative UUID
 UUID=""
 if [ -n "${VLESS_UUID:-}" ]; then
     if validate_uuid "$VLESS_UUID"; then
@@ -118,13 +101,11 @@ if [ -n "${VLESS_UUID:-}" ]; then
         echo "FATAL: Configured VLESS_UUID ('$VLESS_UUID') is not a valid RFC 4122 UUID." >&2
         exit 1
     fi
-    # Persist explicitly provided UUID atomically
     TMP_UUID_FILE="${UUID_STORAGE_FILE}.tmp.$$"
     echo "$UUID" > "$TMP_UUID_FILE"
     chmod 600 "$TMP_UUID_FILE"
     mv "$TMP_UUID_FILE" "$UUID_STORAGE_FILE"
 else
-    # Check for existing persisted UUID
     if [ -f "$UUID_STORAGE_FILE" ]; then
         EXISTING_UUID="$(head -n 1 "$UUID_STORAGE_FILE" | tr -d ' \r\n')"
         if validate_uuid "$EXISTING_UUID"; then
@@ -133,7 +114,6 @@ else
         fi
     fi
 
-    # Generate new UUID if absent or invalid
     if [ -z "$UUID" ]; then
         UUID="$(generate_random_uuid)"
         if ! validate_uuid "$UUID"; then
@@ -148,9 +128,6 @@ else
     fi
 fi
 
-# ------------------------------------------------------------------------------
-# 3. Server IP Validation and Ingestion
-# ------------------------------------------------------------------------------
 IPS_FILE=""
 for candidate in /etc/mey2ray/ips.txt .devcontainer/ips.txt ./ips.txt /app/ips.txt; do
     if [ -f "$candidate" ]; then
@@ -166,7 +143,6 @@ fi
 
 validate_ipv4() {
     ip_candidate="$1"
-    # Basic octet split and range validation
     old_ifs="$IFS"
     IFS='.'
     set -- $ip_candidate
@@ -175,7 +151,6 @@ validate_ipv4() {
         return 1
     fi
     for octet in "$@"; do
-        # Check integer and range 0-255
         case "$octet" in
             ''|*[!0-9]*) return 1 ;;
         esac
@@ -186,27 +161,21 @@ validate_ipv4() {
     return 0
 }
 
-# Parse, validate, and deduplicate IPs while preserving order
 VALID_IPS=""
 SEEN_IPS=""
 
 while IFS= read -r line || [ -n "$line" ]; do
-    # Strip CR and whitespace
     clean_line="$(echo "$line" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     
-    # Ignore blank lines and comments
     case "$clean_line" in
         ''|\#*) continue ;;
     esac
 
-    # Extract IP token (ignore trailing comments)
     ip_entry="$(echo "$clean_line" | awk '{print $1}')"
 
     if validate_ipv4 "$ip_entry"; then
-        # Check duplicate
         case " $SEEN_IPS " in
             *" $ip_entry "*)
-                # Duplicate ignored
                 ;;
             *)
                 SEEN_IPS="$SEEN_IPS $ip_entry"
@@ -228,9 +197,6 @@ if [ -z "$VALID_IPS" ]; then
     VALID_IPS="127.0.0.1"
 fi
 
-# ------------------------------------------------------------------------------
-# 4. Derive Codespaces SNI & Endpoints
-# ------------------------------------------------------------------------------
 if [ -n "${CODESPACE_NAME:-}" ]; then
     DOMAIN="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
     SNI="${CODESPACE_NAME}-443.${DOMAIN}"
@@ -246,9 +212,6 @@ else
     SUB_URL="https://${SNI}/sub"
 fi
 
-# ------------------------------------------------------------------------------
-# 5. Generate VLESS Profiles & Synchronized Subscription Files
-# ------------------------------------------------------------------------------
 RAW_LINKS=""
 LINKS_JSON="["
 COUNT=0
@@ -261,7 +224,6 @@ for ip in $VALID_IPS; do
     PADDED_INDEX="$(printf "%02d" "$COUNT")"
     REMARK="Mey2Ray-${PADDED_INDEX}%20%28${ip}%29"
     
-    # Standard VLESS WS TLS URL with ALPN and FP chrome headers
     LINK="vless://${UUID}@${ip}:443?encryption=none&security=tls&type=ws&host=${SNI}&sni=${SNI}&path=%2F&alpn=http%2F1.1&fp=chrome#${REMARK}"
     
     if [ -z "$RAW_LINKS" ]; then
@@ -276,15 +238,12 @@ done
 IFS="$OLD_IFS"
 LINKS_JSON="${LINKS_JSON}]"
 
-# Write raw links
 echo "$RAW_LINKS" > "${SUB_DIR}/links.txt"
 
-# Generate Base64 subscription
 OFFLINE_B64="$(printf "%s\n" "$RAW_LINKS" | base64 | tr -d '\r\n')"
 echo "$OFFLINE_B64" > "${SUB_DIR}/index.txt"
 chmod 644 "${SUB_DIR}/index.txt"
 
-# Generate dynamic data JSON for Web Dashboard
 cat <<EOF > "${DASHBOARD_DIR}/data.json"
 {
   "subscriptionUrl": "${SUB_URL}",
@@ -295,9 +254,6 @@ cat <<EOF > "${DASHBOARD_DIR}/data.json"
 EOF
 chmod 644 "${DASHBOARD_DIR}/data.json"
 
-# ------------------------------------------------------------------------------
-# 6. Prepare and Validate Xray Configuration
-# ------------------------------------------------------------------------------
 if [ ! -f "$CONFIG_TEMPLATE" ]; then
     echo "FATAL: Xray configuration template ($CONFIG_TEMPLATE) missing." >&2
     exit 1
@@ -313,14 +269,10 @@ if ! /usr/local/bin/xray -test -c "$CONFIG" >/dev/null 2>&1; then
     exit 1
 fi
 
-# ------------------------------------------------------------------------------
-# 7. Start Xray Service
-# ------------------------------------------------------------------------------
 echo "==> Starting Xray engine (127.0.0.1:8443)..."
 /usr/local/bin/xray -c "$CONFIG" >/var/log/xray.log 2>&1 &
 XRAY_PID=$!
 
-# Wait for local Xray socket readiness
 ready=0
 for i in $(seq 1 10); do
     if ! kill -0 "$XRAY_PID" 2>/dev/null; then
@@ -328,7 +280,6 @@ for i in $(seq 1 10); do
         cat /var/log/xray.log >&2
         exit 1
     fi
-    # Non-blocking probe to local Xray port
     if curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 http://127.0.0.1:8443/ >/dev/null 2>&1; then
         ready=1
         break
@@ -338,9 +289,6 @@ done
 
 echo "==> Xray engine initialized successfully."
 
-# ------------------------------------------------------------------------------
-# 8. Start Nginx Reverse Proxy
-# ------------------------------------------------------------------------------
 echo "==> Testing Nginx configuration..."
 if ! nginx -t -c "$NGINX_CONF" >/dev/null 2>&1; then
     echo "FATAL: Nginx configuration test failed." >&2
@@ -352,7 +300,6 @@ echo "==> Starting Nginx reverse proxy (Port 443)..."
 nginx -c "$NGINX_CONF" &
 NGINX_PID=$!
 
-# Wait for Nginx local healthz
 nginx_ready=0
 for i in $(seq 1 10); do
     if [ "$(curl -fsSL --connect-timeout 1 http://127.0.0.1:443/healthz 2>/dev/null || true)" = "OK" ]; then
@@ -369,16 +316,10 @@ fi
 
 echo "==> Nginx reverse proxy initialized successfully."
 
-# ------------------------------------------------------------------------------
-# 9. Output Information Banner
-# ------------------------------------------------------------------------------
 if [ -x "/usr/local/bin/show-info.sh" ]; then
     /usr/local/bin/show-info.sh
 fi
 
-# ------------------------------------------------------------------------------
-# 10. Process Supervision Loop
-# ------------------------------------------------------------------------------
 echo "==> Mey2Ray daemon active. Supervising services..."
 
 while true; do
