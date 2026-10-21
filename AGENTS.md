@@ -50,3 +50,10 @@ These rules are mandatory for all AI agents and developers working on the Mey2Ra
 * Both `/sub` and the offline Base64 subscription block must be derived from the exact same validated source of truth (`ips.txt`).
 * All VLESS profile remarks must follow consistent zero-padded naming: `#Mey2Ray-XX (IP)`.
 * Changes to endpoints or configurations must automatically reflect across `/sub`, terminal output, and dashboard data.
+
+---
+
+### Rule 7: Automated Commit & Push on Task Completion
+* After each task or set of changes is completed, formulate a structured commit summary and description.
+* Automatically stage changes, commit with the descriptive message, and push directly to the `main` branch of the repository (`https://github.com/meytiii/mey2ray`).
+* Verify that all code conforms to project rules (including Rule 1: No Comments in Code) and all tests pass before pushing.
