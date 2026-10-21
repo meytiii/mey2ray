@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mey2Ray — VLESS Proxy Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="brand">
+                <span class="brand-badge">Xray</span>
+                <div>
+                    <h1 class="brand-title">Mey2Ray</h1>
+                    <p class="brand-desc">Lightweight VLESS-over-WebSocket proxy infrastructure</p>
+                </div>
+            </div>
+            <div id="healthPill" class="status-pill" role="status" aria-live="polite">
+                <span class="status-dot"></span>
+                <span>Services Initialized</span>
+            </div>
+        </header>
+
+        <!-- Subscription & QR Code Panel -->
+        <main>
+            <section class="card" aria-labelledby="sub-section-title">
+                <div class="card-title" id="sub-section-title">
+                    <span>Live Client Subscription</span>
+                    <span id="profileCount" style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted);">Syncing endpoints...</span>
+                </div>
+                <p class="card-desc">
+                    Subscribe with your preferred VLESS client (e.g., v2rayN, NekoBox, Streisand, Shadowrocket) for automatic endpoint synchronization and updates.
+                </p>
+
+                <div class="grid-two-col">
+                    <div>
+                        <label for="subUrlInput" style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-secondary);">
+                            Subscription URL (HTTPS)
+                        </label>
+                        <div class="sub-url-box">
+                            <input type="text" id="subUrlInput" class="input-readonly" readonly aria-label="Live Subscription URL" placeholder="Detecting subscription URL...">
+                        </div>
+
+                        <div class="btn-group">
+                            <button id="copySubBtn" class="btn btn-primary" type="button" aria-label="Copy Subscription URL">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                Copy Subscription URL
+                            </button>
+                            <button id="copyAllBtn" class="btn btn-secondary" type="button" aria-label="Copy All Readable VLESS Links">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                                Copy All Links (Plaintext)
+                            </button>
+                        </div>
+
+                        <div style="margin-top: 1.5rem;">
+                            <div class="notice">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                <div>
+                                    <strong>Important Reachability Note:</strong> Live subscriptions require GitHub Codespaces port 443 visibility to be set to <strong>Public</strong>. If the Codespace is stopped or sleeping, live subscription queries will pause until resumed.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="qr-wrapper">
+                        <div id="qrCodeContainer" class="qr-box" aria-label="QR Code for Subscription URL">
+                            <!-- QR Code generated locally via JS -->
+                        </div>
+                        <span class="qr-caption">Scan with mobile client camera</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Instructions Section -->
+            <section class="card" style="margin-top: 1.5rem;" aria-labelledby="guide-section-title">
+                <h2 class="card-title" id="guide-section-title">Import & Usage Instructions</h2>
+                <ol class="step-list">
+                    <li class="step-item">
+                        <span class="step-num">1</span>
+                        <div class="step-content">
+                            <strong>Live Subscription (Recommended):</strong> Copy the Subscription URL above, open your client (v2rayN, NekoBox, etc.), add a new Subscription Group, paste the URL, and trigger an update.
+                        </div>
+                    </li>
+                    <li class="step-item">
+                        <span class="step-num">2</span>
+                        <div class="step-content">
+                            <strong>Offline Base64 Import (Fallback):</strong> If your client cannot reach the live URL directly or the Codespace is stopped, import the static Base64 payload directly from the clipboard.
+                        </div>
+                    </li>
+                    <li class="step-item">
+                        <span class="step-num">3</span>
+                        <div class="step-content">
+                            <strong>Direct Link Import:</strong> Click "Copy All Links" and import directly into clipboard-based configuration parsers.
+                        </div>
+                    </li>
+                </ol>
+            </section>
+
+            <!-- Offline Subscription Block -->
+            <section class="card" style="margin-top: 1.5rem;" aria-labelledby="offline-section-title">
+                <div class="card-title" id="offline-section-title">
+                    <span>Offline Base64 Subscription Payload</span>
+                    <button id="copyOfflineBtn" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;" type="button" aria-label="Copy Raw Base64 Block">
+                        Copy Base64 Block
+                    </button>
+                </div>
+                <p class="card-desc">
+                    Complete static Base64 block containing all VLESS profiles. Importable directly in client apps without network access to this Codespace.
+                </p>
+                <pre id="offlineCode" class="code-block" tabindex="0" aria-label="Base64 Encoded Subscription Text">Loading offline payload...</pre>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Mey2Ray &bull; Educational & Research Proxy Infrastructure &bull; Local health indicates service status, not WAN bypass reachability.</p>
+        </footer>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast" role="status" aria-live="polite">Copied to clipboard</div>
+
+    <!-- Scripts (100% offline & local) -->
+    <script src="qrcode.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

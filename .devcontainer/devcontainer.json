@@ -1,5 +1,5 @@
 {
-  "name": "MeyRay",
+  "name": "Mey2Ray",
   "build": {
     "dockerfile": "./Dockerfile",
     "context": "."
@@ -13,12 +13,12 @@
     }
   },
   "postAttachCommand": {
-    "public": "gh codespace ports visibility 443:public -c $CODESPACE_NAME",
-    "xray": "sudo -E /usr/local/bin/entrypoint.sh"
+    "public": "gh codespace ports visibility 443:public -c $CODESPACE_NAME 2>/dev/null || true",
+    "info": "/usr/local/bin/show-info.sh"
   },
   "portsAttributes": {
     "443": {
-      "label": "xray-vless",
+      "label": "mey2ray-proxy",
       "protocol": "http",
       "onAutoForward": "silent"
     }

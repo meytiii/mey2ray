@@ -1,67 +1,394 @@
 #!/bin/sh
+# ==============================================================================
+# Mey2Ray Authoritative Container Entrypoint
+# Manages lifecycle, persistent UUID, IP validation, Xray, and Nginx reverse proxy
+# ==============================================================================
 set -eu
 
-CONFIG_TEMPLATE="/etc/config.template.json"
-CONFIG="/etc/config.json"
+PID_DIR="/var/run/mey2ray"
+PID_FILE="${PID_DIR}/mey2ray.pid"
+CONFIG_TEMPLATE="/etc/mey2ray/config.template.json"
+CONFIG="/etc/mey2ray/config.json"
+NGINX_CONF="/etc/nginx/nginx.conf"
+SUB_DIR="/var/www/sub"
+DASHBOARD_DIR="/var/www/dashboard"
 
-generate_uuid() {
-    prefix="4b616b6f-6f6c-4e65-7773"
-    suffix=$(od -An -tx1 -N6 /dev/urandom | tr -d ' \n')
-    echo "${prefix}-${suffix}"
+mkdir -p "$PID_DIR" "$SUB_DIR" "$DASHBOARD_DIR" /etc/mey2ray /var/log/nginx
+
+# ------------------------------------------------------------------------------
+# 1. Single Authoritative Execution & Lock Check
+# ------------------------------------------------------------------------------
+if [ -f "$PID_FILE" ]; then
+    OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "==> Mey2Ray daemon is already active (PID: $OLD_PID)."
+        if [ -x "/usr/local/bin/show-info.sh" ]; then
+            exec /usr/local/bin/show-info.sh
+        fi
+        exit 0
+    fi
+fi
+
+echo "$$" > "$PID_FILE"
+
+# Process tracking variables
+XRAY_PID=""
+NGINX_PID=""
+
+cleanup() {
+    echo ""
+    echo "==> Mey2Ray received termination signal. Stopping services..."
+    if [ -n "$NGINX_PID" ] && kill -0 "$NGINX_PID" 2>/dev/null; then
+        kill -QUIT "$NGINX_PID" 2>/dev/null || true
+    fi
+    if [ -n "$XRAY_PID" ] && kill -0 "$XRAY_PID" 2>/dev/null; then
+        kill -TERM "$XRAY_PID" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    echo "==> Shutdown complete."
+    exit 0
 }
 
-UUID="${VLESS_UUID:-$(generate_uuid)}"
+trap cleanup INT TERM HUP QUIT
+
+# ------------------------------------------------------------------------------
+# 2. Persistent UUID Management
+# ------------------------------------------------------------------------------
+validate_uuid() {
+    val="$1"
+    # RFC 4122 UUID pattern
+    case "$val" in
+        [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+generate_random_uuid() {
+    if command -v uuidgen >/dev/null 2>&1; then
+        uuidgen | tr '[:upper:]' '[:lower:]'
+    else
+        # Fallback to cryptographically seeded random bytes
+        hex="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+        p1=$(echo "$hex" | cut -c 1-8)
+        p2=$(echo "$hex" | cut -c 9-12)
+        p3="4$(echo "$hex" | cut -c 14-16)"
+        c=$(echo "$hex" | cut -c 17)
+        # Variant bits 8, 9, a, or b
+        case "$c" in
+            [0-3]) v="8" ;;
+            [4-7]) v="9" ;;
+            [8-9a-b]) v="a" ;;
+            *) v="b" ;;
+        esac
+        p4="${v}$(echo "$hex" | cut -c 18-20)"
+        p5=$(echo "$hex" | cut -c 21-32)
+        echo "${p1}-${p2}-${p3}-${p4}-${p5}"
+    fi
+}
+
+# Resolve persistent storage directory across Codespaces container restarts/rebuilds
+# The workspace folder in Codespaces (/workspaces/<repo>) is a persistent Docker mount.
+STATE_DIR=""
+for candidate in /workspaces/* "$PWD" /app; do
+    if [ -d "$candidate" ] && [ -w "$candidate" ]; then
+        if [ -d "$candidate/.devcontainer" ] || [ -d "$candidate/.git" ]; then
+            STATE_DIR="$candidate/.devcontainer/.state"
+            break
+        fi
+    fi
+done
+
+if [ -z "$STATE_DIR" ]; then
+    STATE_DIR="/etc/mey2ray"
+fi
+mkdir -p "$STATE_DIR"
+UUID_STORAGE_FILE="${STATE_DIR}/uuid"
+
+# Determine authoritative UUID
+UUID=""
+if [ -n "${VLESS_UUID:-}" ]; then
+    if validate_uuid "$VLESS_UUID"; then
+        UUID="$VLESS_UUID"
+        echo "==> Using explicitly provided VLESS_UUID."
+    else
+        echo "FATAL: Configured VLESS_UUID ('$VLESS_UUID') is not a valid RFC 4122 UUID." >&2
+        exit 1
+    fi
+    # Persist explicitly provided UUID atomically
+    TMP_UUID_FILE="${UUID_STORAGE_FILE}.tmp.$$"
+    echo "$UUID" > "$TMP_UUID_FILE"
+    chmod 600 "$TMP_UUID_FILE"
+    mv "$TMP_UUID_FILE" "$UUID_STORAGE_FILE"
+else
+    # Check for existing persisted UUID
+    if [ -f "$UUID_STORAGE_FILE" ]; then
+        EXISTING_UUID="$(head -n 1 "$UUID_STORAGE_FILE" | tr -d ' \r\n')"
+        if validate_uuid "$EXISTING_UUID"; then
+            UUID="$EXISTING_UUID"
+            echo "==> Loaded persistent UUID from storage."
+        fi
+    fi
+
+    # Generate new UUID if absent or invalid
+    if [ -z "$UUID" ]; then
+        UUID="$(generate_random_uuid)"
+        if ! validate_uuid "$UUID"; then
+            echo "FATAL: Failed to generate valid UUID." >&2
+            exit 1
+        fi
+        TMP_UUID_FILE="${UUID_STORAGE_FILE}.tmp.$$"
+        echo "$UUID" > "$TMP_UUID_FILE"
+        chmod 600 "$TMP_UUID_FILE"
+        mv "$TMP_UUID_FILE" "$UUID_STORAGE_FILE"
+        echo "==> Generated and saved new persistent UUID."
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# 3. Server IP Validation and Ingestion
+# ------------------------------------------------------------------------------
+IPS_FILE=""
+for candidate in /etc/mey2ray/ips.txt .devcontainer/ips.txt ./ips.txt /app/ips.txt; do
+    if [ -f "$candidate" ]; then
+        IPS_FILE="$candidate"
+        break
+    fi
+done
+
+if [ -z "$IPS_FILE" ]; then
+    echo "FATAL: Server IP configuration file (ips.txt) not found." >&2
+    exit 1
+fi
+
+validate_ipv4() {
+    ip_candidate="$1"
+    # Basic octet split and range validation
+    old_ifs="$IFS"
+    IFS='.'
+    set -- $ip_candidate
+    IFS="$old_ifs"
+    if [ "$#" -ne 4 ]; then
+        return 1
+    fi
+    for octet in "$@"; do
+        # Check integer and range 0-255
+        case "$octet" in
+            ''|*[!0-9]*) return 1 ;;
+        esac
+        if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+# Parse, validate, and deduplicate IPs while preserving order
+VALID_IPS=""
+SEEN_IPS=""
+
+while IFS= read -r line || [ -n "$line" ]; do
+    # Strip CR and whitespace
+    clean_line="$(echo "$line" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    
+    # Ignore blank lines and comments
+    case "$clean_line" in
+        ''|\#*) continue ;;
+    esac
+
+    # Extract IP token (ignore trailing comments)
+    ip_entry="$(echo "$clean_line" | awk '{print $1}')"
+
+    if validate_ipv4 "$ip_entry"; then
+        # Check duplicate
+        case " $SEEN_IPS " in
+            *" $ip_entry "*)
+                # Duplicate ignored
+                ;;
+            *)
+                SEEN_IPS="$SEEN_IPS $ip_entry"
+                if [ -z "$VALID_IPS" ]; then
+                    VALID_IPS="$ip_entry"
+                else
+                    VALID_IPS="$VALID_IPS
+$ip_entry"
+                fi
+                ;;
+        esac
+    else
+        echo "WARNING: Skipping invalid IP entry in ips.txt: '$ip_entry'" >&2
+    fi
+done < "$IPS_FILE"
+
+if [ -z "$VALID_IPS" ]; then
+    echo "WARNING: No valid IPs parsed from $IPS_FILE. Falling back to 127.0.0.1" >&2
+    VALID_IPS="127.0.0.1"
+fi
+
+# ------------------------------------------------------------------------------
+# 4. Derive Codespaces SNI & Endpoints
+# ------------------------------------------------------------------------------
+if [ -n "${CODESPACE_NAME:-}" ]; then
+    DOMAIN="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+    SNI="${CODESPACE_NAME}-443.${DOMAIN}"
+elif [ -n "${PUBLIC_HOST:-}" ]; then
+    SNI="$PUBLIC_HOST"
+else
+    SNI="localhost"
+fi
+
+if [ "$SNI" = "localhost" ]; then
+    SUB_URL="http://localhost:443/sub"
+else
+    SUB_URL="https://${SNI}/sub"
+fi
+
+# ------------------------------------------------------------------------------
+# 5. Generate VLESS Profiles & Synchronized Subscription Files
+# ------------------------------------------------------------------------------
+RAW_LINKS=""
+LINKS_JSON="["
+COUNT=0
+
+OLD_IFS="$IFS"
+IFS='
+'
+for ip in $VALID_IPS; do
+    COUNT=$((COUNT + 1))
+    PADDED_INDEX="$(printf "%02d" "$COUNT")"
+    REMARK="Mey2Ray-${PADDED_INDEX}%20%28${ip}%29"
+    
+    # Standard VLESS WS TLS URL with ALPN and FP chrome headers
+    LINK="vless://${UUID}@${ip}:443?encryption=none&security=tls&type=ws&host=${SNI}&sni=${SNI}&path=%2F&alpn=http%2F1.1&fp=chrome#${REMARK}"
+    
+    if [ -z "$RAW_LINKS" ]; then
+        RAW_LINKS="$LINK"
+        LINKS_JSON="${LINKS_JSON}\"${LINK}\""
+    else
+        RAW_LINKS="$RAW_LINKS
+$LINK"
+        LINKS_JSON="${LINKS_JSON},\"${LINK}\""
+    fi
+done
+IFS="$OLD_IFS"
+LINKS_JSON="${LINKS_JSON}]"
+
+# Write raw links
+echo "$RAW_LINKS" > "${SUB_DIR}/links.txt"
+
+# Generate Base64 subscription
+OFFLINE_B64="$(printf "%s\n" "$RAW_LINKS" | base64 | tr -d '\r\n')"
+echo "$OFFLINE_B64" > "${SUB_DIR}/index.txt"
+chmod 644 "${SUB_DIR}/index.txt"
+
+# Generate dynamic data JSON for Web Dashboard
+cat <<EOF > "${DASHBOARD_DIR}/data.json"
+{
+  "subscriptionUrl": "${SUB_URL}",
+  "profileCount": ${COUNT},
+  "links": ${LINKS_JSON},
+  "offlineBase64": "${OFFLINE_B64}"
+}
+EOF
+chmod 644 "${DASHBOARD_DIR}/data.json"
+
+# ------------------------------------------------------------------------------
+# 6. Prepare and Validate Xray Configuration
+# ------------------------------------------------------------------------------
+if [ ! -f "$CONFIG_TEMPLATE" ]; then
+    echo "FATAL: Xray configuration template ($CONFIG_TEMPLATE) missing." >&2
+    exit 1
+fi
 
 sed "s/\${UUID}/$UUID/g" "$CONFIG_TEMPLATE" > "$CONFIG"
+chmod 600 "$CONFIG"
 
-SNI="${CODESPACE_NAME:-localhost}-443.app.github.dev"
+echo "==> Testing Xray configuration..."
+if ! /usr/local/bin/xray -test -c "$CONFIG" >/dev/null 2>&1; then
+    echo "FATAL: Xray configuration test failed." >&2
+    /usr/local/bin/xray -test -c "$CONFIG"
+    exit 1
+fi
 
-echo ""
-echo "========================================"
-echo "  MeyRay - VLESS Proxy (OLD IPs)"
-echo "========================================"
-echo ""
-echo "VLESS links:"
-echo "vless://${UUID}@94.130.50.12:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@63.141.252.203:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@94.130.70.160:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@144.76.1.88:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@50.7.5.83:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@94.130.33.41:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@95.216.69.37:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@144.76.1.88:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@85.10.207.48:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@94.130.13.19:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@185.58.242.39:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@194.59.171.194:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@188.213.209.146:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@212.16.68.85:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@193.151.147.47:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@95.38.197.166:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo ""
-echo "========================================"
-echo ""
-echo "========================================"
-echo "  MeyRay - VLESS Proxy (New IPs)"
-echo "========================================"
-echo ""
-echo "VLESS links:"
-echo "vless://${UUID}@81.12.32.136:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@46.38.137.156:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@45.89.221.111:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@131.214.250.94:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@85.198.12.209:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@85.9.112.219:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@20.103.221.187:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo "vless://${UUID}@216.24.57.6:443?encryption=none&security=tls&type=ws&sni=${SNI}&path=%2F#@Mey2Ray"
-echo ""
-echo "========================================"
-echo ""
-
-/usr/local/bin/xray -c "$CONFIG" &
+# ------------------------------------------------------------------------------
+# 7. Start Xray Service
+# ------------------------------------------------------------------------------
+echo "==> Starting Xray engine (127.0.0.1:8443)..."
+/usr/local/bin/xray -c "$CONFIG" >/var/log/xray.log 2>&1 &
 XRAY_PID=$!
 
-while kill -0 "$XRAY_PID" 2>/dev/null; do
-    echo "[MeyRay] alive - $(date '+%H:%M:%S')"
-    sleep 300
+# Wait for local Xray socket readiness
+ready=0
+for i in $(seq 1 10); do
+    if ! kill -0 "$XRAY_PID" 2>/dev/null; then
+        echo "FATAL: Xray process exited unexpectedly during startup. Inspecting log:" >&2
+        cat /var/log/xray.log >&2
+        exit 1
+    fi
+    # Non-blocking probe to local Xray port
+    if curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 http://127.0.0.1:8443/ >/dev/null 2>&1; then
+        ready=1
+        break
+    fi
+    sleep 1
+done
+
+echo "==> Xray engine initialized successfully."
+
+# ------------------------------------------------------------------------------
+# 8. Start Nginx Reverse Proxy
+# ------------------------------------------------------------------------------
+echo "==> Testing Nginx configuration..."
+if ! nginx -t -c "$NGINX_CONF" >/dev/null 2>&1; then
+    echo "FATAL: Nginx configuration test failed." >&2
+    nginx -t -c "$NGINX_CONF"
+    exit 1
+fi
+
+echo "==> Starting Nginx reverse proxy (Port 443)..."
+nginx -c "$NGINX_CONF" &
+NGINX_PID=$!
+
+# Wait for Nginx local healthz
+nginx_ready=0
+for i in $(seq 1 10); do
+    if [ "$(curl -fsSL --connect-timeout 1 http://127.0.0.1:443/healthz 2>/dev/null || true)" = "OK" ]; then
+        nginx_ready=1
+        break
+    fi
+    sleep 1
+done
+
+if [ "$nginx_ready" -ne 1 ]; then
+    echo "FATAL: Nginx reverse proxy failed to respond on http://127.0.0.1:443/healthz" >&2
+    exit 1
+fi
+
+echo "==> Nginx reverse proxy initialized successfully."
+
+# ------------------------------------------------------------------------------
+# 9. Output Information Banner
+# ------------------------------------------------------------------------------
+if [ -x "/usr/local/bin/show-info.sh" ]; then
+    /usr/local/bin/show-info.sh
+fi
+
+# ------------------------------------------------------------------------------
+# 10. Process Supervision Loop
+# ------------------------------------------------------------------------------
+echo "==> Mey2Ray daemon active. Supervising services..."
+
+while true; do
+    if ! kill -0 "$XRAY_PID" 2>/dev/null; then
+        echo "ERROR: Xray process (PID $XRAY_PID) terminated." >&2
+        cleanup
+    fi
+    if ! kill -0 "$NGINX_PID" 2>/dev/null; then
+        echo "ERROR: Nginx process (PID $NGINX_PID) terminated." >&2
+        cleanup
+    fi
+    sleep 5
 done

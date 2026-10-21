@@ -1,0 +1,16 @@
+# Mey2Ray local state and runtime files
+.state/
+*.uuid
+.mey2ray_uuid
+*.pid
+*.log
+*.tmp
+
+# Python test artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
